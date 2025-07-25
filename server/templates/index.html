@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>远程客户端控制器</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.6; background-color: #f4f4f9; color: #333; max-width: 900px; margin: 20px auto; padding: 0 20px; }
+        .container { background-color: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        h1, h2 { color: #444; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        button { background-color: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 1em; transition: background-color 0.2s; margin: 5px 0; }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #a0a0a0; cursor: not-allowed; }
+        .btn-success { background-color: #28a745; } .btn-success:hover { background-color: #218838; }
+        .btn-danger { background-color: #dc3545; } .btn-danger:hover { background-color: #c82333; }
+        .btn-warning { background-color: #ffc107; color: #212529; } .btn-warning:hover { background-color: #e0a800; }
+        .btn-secondary { background-color: #6c757d; } .btn-secondary:hover { background-color: #5a6268; }
+        /* 自动截图按钮激活状态的样式 */
+        #btn-auto-screenshot-toggle.active { background-color: #fd7e14; }
+        #btn-auto-screenshot-toggle.active:hover { background-color: #e86a02; }
+        
+        .status-container { display: flex; justify-content: space-between; align-items: center; padding: 10px; background-color: #e9ecef; border-radius: 5px; margin-bottom: 20px; flex-wrap: wrap; }
+        .client-status { display: flex; align-items: center; font-weight: bold; }
+        .action-status { font-style: italic; color: #6c757d; text-align: right; flex-grow: 1; }
+        .status-dot { height: 12px; width: 12px; border-radius: 50%; display: inline-block; margin-right: 10px; flex-shrink: 0; }
+        .status-dot.online { background-color: #28a745; animation: pulse 2s infinite; }
+        .status-dot.offline { background-color: #dc3545; }
+        .status-dot.loading { background-color: #ffc107; }
+        .status-dot.unknown { background-color: #6c757d; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(40, 167, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); } }
+        #tasklist-output { background-color: #2b2b2b; color: #f0f0f0; padding: 15px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto; font-family: "Courier New", Courier, monospace; }
+        #screenshot-container img { max-width: 100%; border: 1px solid #ddd; border-radius: 5px; margin-top: 10px; }
+        input, select { padding: 8px; font-size: 1em; border-radius: 5px; border: 1px solid #ccc; margin-right: 5px; }
+        .control-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;}
+        /* Modal styles */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 500px; border-radius: 8px; }
+        .modal-content label { display: block; margin-top: 10px; font-weight: bold; }
+        .modal-content input { width: calc(100% - 20px); }
+    </style>
+</head>
+<body>
+
+    <h1>远程客户端控制器</h1>
+
+    <!-- 1. 客户端管理 -->
+    <div class="container">
+        <h2>客户端管理</h2>
+        <div class="control-group">
+            <select id="client-selector" style="flex-grow: 1;">
+                <option value="">-- 请先添加并选择一个客户端 --</option>
+            </select>
+            <button id="btn-check-status" class="btn-secondary">检查状态</button>
+        </div>
+        <div class="control-group">
+            <button id="btn-add-client" class="btn-success">添加新客户端</button>
+            <button id="btn-edit-client" class="btn-warning">编辑选中项</button>
+            <button id="btn-delete-client" class="btn-danger">删除选中项</button>
+            <button id="btn-save-list" class="btn-success">保存列表到服务器</button>
+        </div>
+    </div>
+    
+    <!-- 全局状态栏 -->
+    <div class="status-container">
+        <div class="client-status">
+            <span id="status-dot" class="status-dot unknown"></span>
+            <span id="client-status-text">未选择客户端</span>
+        </div>
+        <div id="action-status" class="action-status"></div>
+    </div>
+    
+    <!-- 功能区 -->
+    <div id="main-controls" style="display: none;">
+        <div class="container">
+            <h2>屏幕截图</h2>
+            <div class="control-group">
+                <button id="btn-screenshot">获取单张截图</button>
+            </div>
+            <div class="control-group" style="margin-top: 15px;">
+                <button id="btn-auto-screenshot-toggle">启动自动截图</button>
+                <input type="number" id="auto-screenshot-interval" value="5" min="1">
+                <span>秒/次</span>
+            </div>
+            <div id="screenshot-container" style="display: none;">
+                <img id="screenshot-image" alt="屏幕截图">
+            </div>
+        </div>
+
+        <div class="container">
+            <h2>进程列表</h2>
+            <button id="btn-tasklist">获取并排序进程列表</button>
+            <pre id="tasklist-output"></pre>
+        </div>
+
+        <div class="container">
+            <h2>远程关机</h2>
+            <div class="control-group">
+                <input type="number" id="shutdown-delay" value="300" min="-1"> <span>秒后关机</span>
+                <button id="btn-delay-shutdown">执行</button>
+            </div>
+            <div class="control-group" style="margin-top: 10px;">
+                <button id="btn-shutdown-now" class="btn-danger">立即关机</button>
+                <button id="btn-cancel-shutdown" class="btn-success">取消计划</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 客户端编辑模态框 -->
+    <div id="client-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="modal-title">添加客户端</h2>
+            <input type="hidden" id="modal-client-id">
+            <label for="modal-client-name">名称 (方便记忆):</label>
+            <input type="text" id="modal-client-name" placeholder="例如: 客厅的电脑">
+            <label for="modal-client-host">主机 (IP地址或域名):</label>
+            <input type="text" id="modal-client-host" placeholder="例如: 192.168.1.10">
+            <label for="modal-client-port">端口:</label>
+            <input type="number" id="modal-client-port" placeholder="例如: 5001" value="5001">
+            <label for="modal-client-apiKey">API Key:</label>
+            <input type="text" id="modal-client-apiKey" placeholder="客户端 config.ini 中的 API Key">
+            <div class="control-group" style="margin-top: 20px; justify-content: flex-end;">
+                <button id="btn-modal-cancel" class="btn-secondary">取消</button>
+                <button id="btn-modal-save" class="btn-success">保存</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- 全局状态 ---
+    let clients = [];
+    let activeClient = null;
+    let actionStatusTimeout;
+    let autoScreenshotTimer = null; // 用于存储自动截图的 setInterval ID
+
+    // --- DOM 元素 ---
+    const clientSelector = document.getElementById('client-selector');
+    const mainControls = document.getElementById('main-controls');
+    const statusDot = document.getElementById('status-dot');
+    const clientStatusText = document.getElementById('client-status-text');
+    const actionStatus = document.getElementById('action-status');
+
+    // 客户端管理按钮
+    const btnAddClient = document.getElementById('btn-add-client');
+    const btnEditClient = document.getElementById('btn-edit-client');
+    const btnDeleteClient = document.getElementById('btn-delete-client');
+    const btnSaveList = document.getElementById('btn-save-list');
+    const btnCheckStatus = document.getElementById('btn-check-status');
+
+    // 功能区按钮
+    const btnScreenshot = document.getElementById('btn-screenshot');
+    const btnAutoScreenshotToggle = document.getElementById('btn-auto-screenshot-toggle');
+    const autoScreenshotIntervalInput = document.getElementById('auto-screenshot-interval'); // 新增：自动截图间隔输入框
+    const screenshotContainer = document.getElementById('screenshot-container'); // 新增：截图容器
+    const screenshotImage = document.getElementById('screenshot-image'); // 新增：截图图片
+
+    const btnTasklist = document.getElementById('btn-tasklist');
+    const btnDelayShutdown = document.getElementById('btn-delay-shutdown');
+    const btnShutdownNow = document.getElementById('btn-shutdown-now');
+    const btnCancelShutdown = document.getElementById('btn-cancel-shutdown');
+
+    // 模态框元素
+    const clientModal = document.getElementById('client-modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalClientId = document.getElementById('modal-client-id');
+    const modalClientName = document.getElementById('modal-client-name');
+    const modalClientHost = document.getElementById('modal-client-host');
+    const modalClientPort = document.getElementById('modal-client-port');
+    const modalClientApiKey = document.getElementById('modal-client-apiKey');
+    const btnModalSave = document.getElementById('btn-modal-save');
+    const btnModalCancel = document.getElementById('btn-modal-cancel');
+
+    // --- 客户端数据管理 ---
+    const renderClientSelector = () => {
+        const selectedValue = clientSelector.value;
+        clientSelector.innerHTML = '<option value="">-- 请选择一个客户端 --</option>';
+        clients.forEach((client, index) => {
+            const option = document.createElement('option');
+            option.value = index;
+            option.textContent = `${client.name} (${client.host}:${client.port})`;
+            clientSelector.appendChild(option);
+        });
+        // 尝试恢复之前的选择
+        const clientToSelect = clients.findIndex((c, i) => i.toString() === selectedValue);
+        if (clientToSelect > -1) {
+            clientSelector.value = clientToSelect;
+        }
+        updateActiveClient();
+    };
+
+    const updateActiveClient = () => {
+        const selectedIndex = clientSelector.value;
+        if (selectedIndex !== "") {
+            activeClient = clients[selectedIndex];
+            mainControls.style.display = 'block';
+            updateClientStatus('unknown');
+            btnEditClient.disabled = false;
+            btnDeleteClient.disabled = false;
+            btnCheckStatus.disabled = false;
+        } else {
+            activeClient = null;
+            mainControls.style.display = 'none';
+            updateClientStatus('unselected');
+            btnEditClient.disabled = true;
+            btnDeleteClient.disabled = true;
+            btnCheckStatus.disabled = true;
+            // 当没有客户端被选中时，停止自动截图
+            if (autoScreenshotTimer) {
+                toggleAutoScreenshot(true); // 强制停止自动截图
+            }
+        }
+    };
+    
+    const loadClientsFromServer = async () => {
+        try {
+            updateActionStatus('正在从服务器加载客户端列表...');
+            const response = await fetch('/api/clients');
+            if (!response.ok) throw new Error('无法加载客户端列表');
+            clients = await response.json();
+            renderClientSelector();
+            updateActionStatus('客户端列表加载成功!', false);
+        } catch (error) {
+            updateActionStatus(error.message, true);
+        }
+    };
+
+    const saveClientsToServer = async () => {
+        try {
+            updateActionStatus('正在保存列表到服务器...');
+            const response = await fetch('/api/clients', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(clients)
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error);
+            updateActionStatus(result.message, false);
+        } catch(error) {
+            updateActionStatus(`保存失败: ${error.message}`, true);
+        }
+    };
+
+    // --- 模态框逻辑 ---
+    const showClientModal = (clientIndex = null) => {
+        if (clientIndex !== null) {
+            const client = clients[clientIndex];
+            modalTitle.textContent = '编辑客户端';
+            modalClientId.value = clientIndex;
+            modalClientName.value = client.name;
+            modalClientHost.value = client.host;
+            modalClientPort.value = client.port;
+            modalClientApiKey.value = client.apiKey;
+        } else {
+            modalTitle.textContent = '添加新客户端';
+            modalClientId.value = '';
+            modalClientName.value = '';
+            modalClientHost.value = '';
+            modalClientPort.value = '5001';
+            modalClientApiKey.value = '';
+        }
+        clientModal.style.display = 'block';
+    };
+
+    const hideClientModal = () => {
+        clientModal.style.display = 'none';
+    };
+
+    const saveClientFromModal = () => {
+        const id = modalClientId.value;
+        const clientData = {
+            name: modalClientName.value.trim(),
+            host: modalClientHost.value.trim(),
+            port: parseInt(modalClientPort.value, 10),
+            apiKey: modalClientApiKey.value.trim()
+        };
+
+        if (!clientData.name || !clientData.host || !clientData.port || !clientData.apiKey) {
+            alert('所有字段均为必填项!');
+            return;
+        }
+
+        if (id) { // 编辑
+            clients[id] = clientData;
+        } else { // 添加
+            clients.push(clientData);
+        }
+        renderClientSelector();
+        clientSelector.value = id || (clients.length - 1); // 选中刚编辑或添加的项
+        updateActiveClient();
+        hideClientModal();
+    };
+
+    // --- 状态更新 ---
+    const updateClientStatus = (status, data = {}) => {
+        statusDot.className = 'status-dot';
+        switch (status) {
+            case 'online':
+                statusDot.classList.add('online');
+                clientStatusText.textContent = `在线 (v${data.version})`;
+                break;
+            case 'offline':
+                statusDot.classList.add('offline');
+                clientStatusText.textContent = `离线: ${data.error || '无响应'}`;
+                break;
+            case 'loading':
+                statusDot.classList.add('loading');
+                clientStatusText.textContent = '检查中...';
+                break;
+            case 'unknown':
+                 statusDot.classList.add('unknown');
+                 clientStatusText.textContent = '状态未知 (请手动检查)';
+                 break;
+            case 'unselected':
+            default:
+                statusDot.classList.add('unknown');
+                clientStatusText.textContent = '未选择客户端';
+        }
+    };
+    
+    const updateActionStatus = (message, isError = false, persistent = false) => {
+        clearTimeout(actionStatusTimeout);
+        actionStatus.textContent = message;
+        actionStatus.style.color = isError ? '#dc3545' : '#6c757d';
+        if (!persistent) {
+            actionStatusTimeout = setTimeout(() => actionStatus.textContent = '', 4000);
+        }
+    };
+    
+    // --- 通用 API 调用函数 ---
+    const performClientAction = async (endpoint, options = {}) => {
+        if (!activeClient) {
+            updateActionStatus('请先选择一个客户端!', true);
+            return null;
+        }
+        
+        const { payload, successMessage, errorMessagePrefix } = options;
+        // 只有当不是自动截图，或者自动截图的第一次请求时，才显示初始状态
+        // 这里的逻辑需要更精确，避免自动截图频繁刷新actionStatus
+        if (!options.isAuto || (options.isAuto && !autoScreenshotTimer && endpoint === '/api/get_screenshot')) {
+            updateActionStatus(`${errorMessagePrefix}...`, false, true);
+        }
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ client: activeClient, payload: payload })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `HTTP ${response.status}`);
+            }
+
+            // 成功信息只在非自动截图模式下显示，或仅在自动截图成功后显示一次
+            if (!options.isAuto) {
+                updateActionStatus(successMessage);
+            }
+            return response;
+        } catch (error) {
+            updateActionStatus(`${errorMessagePrefix}失败: ${error.message}`, true);
+            // 如果是网络错误导致离线，更新客户端状态
+            if (error.message.includes('通信失败')) {
+                 updateClientStatus('offline', {error: '通信失败'});
+            }
+            return null;
+        }
+    };
+    
+    // --- 屏幕截图功能 ---
+    // getScreenshot 函数现在返回一个 Promise，resolve 为 true 表示成功，false 表示失败
+    const getScreenshot = async (isAuto = false) => {
+        const response = await performClientAction('/api/get_screenshot', {
+            successMessage: '截图获取成功!',
+            errorMessagePrefix: isAuto ? '正在获取自动截图' : '获取截图',
+            isAuto: isAuto // 传递这个选项
+        });
+
+        if (response) {
+            const imageBlob = await response.blob();
+            // 释放之前可能存在的 URL 对象，防止内存泄漏
+            if (screenshotImage.src && screenshotImage.src.startsWith('blob:')) {
+                URL.revokeObjectURL(screenshotImage.src);
+            }
+            screenshotImage.src = URL.createObjectURL(imageBlob);
+            screenshotContainer.style.display = 'block'; // 确保截图容器可见
+            
+            // 如果是自动截图且成功获取，且定时器已启动，更新actionStatus
+            if (isAuto && autoScreenshotTimer) { 
+                updateActionStatus(`自动截图已更新 (${new Date().toLocaleTimeString()})`, false, true);
+            }
+            return true; // 截图成功
+        } else {
+            // 截图失败
+            return false; // 截图失败
+        }
+    };
+
+    const toggleAutoScreenshot = (forceStop = false) => {
+        // Path 1: Stop auto-screenshot (or force stop)
+        if (autoScreenshotTimer || forceStop) {
+            clearInterval(autoScreenshotTimer);
+            autoScreenshotTimer = null;
+            btnAutoScreenshotToggle.textContent = '启动自动截图';
+            btnAutoScreenshotToggle.classList.remove('active');
+            autoScreenshotIntervalInput.disabled = false; // 启用间隔输入框
+            updateActionStatus('自动截图已停止。');
+        } 
+        // Path 2: Start auto-screenshot
+        else {
+            const interval = parseInt(autoScreenshotIntervalInput.value, 10);
+            if (isNaN(interval) || interval < 1) {
+                alert('自动截图间隔必须是大于等于1的整数！');
+                return;
+            }
+
+            if (!activeClient) {
+                updateActionStatus('请先选择一个客户端再启动自动截图！', true);
+                return;
+            }
+
+            btnAutoScreenshotToggle.textContent = '停止自动截图';
+            btnAutoScreenshotToggle.classList.add('active');
+            autoScreenshotIntervalInput.disabled = true; // 禁用间隔输入框
+
+            updateActionStatus('正在启动自动截图...');
+            
+            // 立即尝试获取第一张截图
+            getScreenshot(true).then((success) => {
+                if (success) {
+                    // 只有在第一张截图成功后，才设置定时器
+                    // 确保 activeClient 仍然有效，避免在切换客户端时出现问题
+                    if (activeClient) { 
+                        autoScreenshotTimer = setInterval(() => getScreenshot(true), interval * 1000);
+                        // 首次启动成功的提示，由 getScreenshot 内部处理
+                        // updateActionStatus(`自动截图已启动，每 ${interval} 秒一次。`, false, true);
+                    } else {
+                        // 如果在获取截图期间客户端被取消选择，则停止
+                        toggleAutoScreenshot(true);
+                    }
+                } else {
+                    // 如果第一张截图失败，立即停止自动截图并提示
+                    toggleAutoScreenshot(true); // 强制停止
+                    updateActionStatus('自动截图启动失败，请检查客户端状态或网络连接。', true);
+                }
+            });
+        }
+    };
+
+
+    // --- 事件绑定 ---
+    clientSelector.addEventListener('change', updateActiveClient);
+    btnAddClient.addEventListener('click', () => showClientModal());
+    btnEditClient.addEventListener('click', () => {
+        if (clientSelector.value) showClientModal(clientSelector.value);
+    });
+    btnDeleteClient.addEventListener('click', () => {
+        if (clientSelector.value && confirm(`确定要删除客户端 "${clients[clientSelector.value].name}" 吗？`)) {
+            clients.splice(clientSelector.value, 1);
+            renderClientSelector();
+        }
+    });
+    btnSaveList.addEventListener('click', saveClientsToServer);
+
+    btnModalSave.addEventListener('click', saveClientFromModal);
+    btnModalCancel.addEventListener('click', hideClientModal);
+    window.addEventListener('click', (event) => {
+        if (event.target == clientModal) hideClientModal();
+    });
+
+    btnCheckStatus.addEventListener('click', async () => {
+        if (!activeClient) return;
+        updateClientStatus('loading');
+        try {
+            const response = await fetch('/api/check_client_status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ client: activeClient })
+            });
+            const data = await response.json();
+            if (response.ok && data.status === 'online') {
+                updateClientStatus('online', data.client_info);
+            } else {
+                updateClientStatus('offline', data);
+            }
+        } catch (error) {
+            updateClientStatus('offline', { error: '服务器无法连接' });
+        }
+    });
+    
+    // 单张截图按钮
+    btnScreenshot.addEventListener('click', () => getScreenshot(false));
+
+    // 自动截图开关按钮
+    // --- 修复点 ---
+    // 使用箭头函数包装调用，以防止 Event 对象被作为参数传递
+    btnAutoScreenshotToggle.addEventListener('click', () => toggleAutoScreenshot());
+
+
+    btnTasklist.addEventListener('click', async () => {
+        const tasklistOutput = document.getElementById('tasklist-output');
+        tasklistOutput.textContent = '加载中...';
+        const response = await performClientAction('/api/get_tasklist', {
+            successMessage: '进程列表获取成功!',
+            errorMessagePrefix: '获取进程列表'
+        });
+        if(response) {
+            tasklistOutput.textContent = await response.text();
+        } else {
+            tasklistOutput.textContent = '获取失败。';
+        }
+    });
+
+    const sendShutdownCommand = (delay) => {
+        performClientAction('/api/delay_shutdown', {
+            payload: { delay: delay },
+            successMessage: '关机指令发送成功!',
+            errorMessagePrefix: '发送关机指令'
+        });
+    };
+    
+    btnDelayShutdown.addEventListener('click', () => sendShutdownCommand(parseInt(document.getElementById('shutdown-delay').value, 10)));
+    btnShutdownNow.addEventListener('click', () => sendShutdownCommand(0));
+    btnCancelShutdown.addEventListener('click', () => sendShutdownCommand(-1));
+
+
+    // --- 初始化 ---
+    loadClientsFromServer();
+    updateActiveClient();
+});
+</script>
+
+</body>
+</html>
