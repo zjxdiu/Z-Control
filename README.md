@@ -31,17 +31,17 @@ Z-Control是一个基于python的简单Windows PC远程监控和控制软件。
 	- 填写[配置文件](https://github.com/zjxdiu/Z-Control#%E9%85%8D%E7%BD%AE%E6%96%87%E4%BB%B6)
 
 2. 部署服务端：
-	- 从 [releases](https://github.com/zjxdiu/Z-Control/releases) 中下载server-src.zip，或git clone本仓库后进入server文件夹。
+	- 下载或git clone本仓库后进入server文件夹。
 	- 启动服务端：`python server.py`
 
 3. 部署客户端：
 	- **以下方式部署的是后台静默运行的编译版，仅适用于Windows**
-	- 从 [releases](https://github.com/zjxdiu/Z-Control/releases) 中下载client-dist.zip
+	- 从 [releases](https://github.com/zjxdiu/Z-Control/releases) 中下载client-dist-xxx.zip
 	- 解压后运行其中的client.exe即可。
 	
 4. 部署客户端（从代码运行）：
 	- **以下方式是从py文件直接运行**
-	- 从 [releases](https://github.com/zjxdiu/Z-Control/releases) 中下载client-src.zip，或git clone本仓库后进入client文件夹。
+	- 下载或git clone本仓库后进入client文件夹。
 	- 启动客户端：`python client.py`
 	
 ## 配置文件
